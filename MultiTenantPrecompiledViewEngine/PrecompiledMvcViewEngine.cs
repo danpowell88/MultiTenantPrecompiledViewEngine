@@ -6,67 +6,74 @@ using System.Web;
 using System.Web.Compilation;
 using System.Web.Mvc;
 using System.Web.WebPages;
+using RazorGenerator.Mvc;
 
 namespace MultiTenantPrecompiledViewEngine
 {
     public class PrecompiledMvcEngine : VirtualPathProviderViewEngine, IVirtualPathFactory
     {
+        private readonly IEnumerable<Assembly> _assemblies;
         private readonly IDictionary<string, Type> _mappings;
 
-        public PrecompiledMvcEngine(IEnumerable<Assembly> assembly)
+        private readonly Func<ControllerContext, IEnumerable<Assembly>, Assembly> _tenantFilter;
+
+        public PrecompiledMvcEngine(IEnumerable<Assembly> assemblies, Func<ControllerContext, IEnumerable<Assembly>, Assembly> tenantFilter)
         {
+            _assemblies = assemblies;
+            _tenantFilter = tenantFilter;
+
             AreaViewLocationFormats = new[]
-                                               {
-                                                   "~/Areas/{2}/Views/{1}/{0}.cshtml",
-                                                   "~/Areas/{2}/Views/{1}/{0}.vbhtml",
-                                                   "~/Areas/{2}/Views/Shared/{0}.cshtml",
-                                                   "~/Areas/{2}/Views/Shared/{0}.vbhtml"
-                                               };
+                                          {
+                                              "~/Areas/{2}/Views/{1}/{0}.cshtml",
+                                              "~/Areas/{2}/Views/{1}/{0}.vbhtml",
+                                              "~/Areas/{2}/Views/Shared/{0}.cshtml",
+                                              "~/Areas/{2}/Views/Shared/{0}.vbhtml"
+                                          };
 
             AreaMasterLocationFormats = new[]
+                                            {
+                                                "~/Areas/{2}/Views/{1}/{0}.cshtml",
+                                                "~/Areas/{2}/Views/{1}/{0}.vbhtml",
+                                                "~/Areas/{2}/Views/Shared/{0}.cshtml",
+                                                "~/Areas/{2}/Views/Shared/{0}.vbhtml"
+                                            };
+
+            AreaPartialViewLocationFormats = new[]
                                                  {
                                                      "~/Areas/{2}/Views/{1}/{0}.cshtml",
                                                      "~/Areas/{2}/Views/{1}/{0}.vbhtml",
                                                      "~/Areas/{2}/Views/Shared/{0}.cshtml",
                                                      "~/Areas/{2}/Views/Shared/{0}.vbhtml"
                                                  };
-
-            AreaPartialViewLocationFormats = new[]
-                                                      {
-                                                          "~/Areas/{2}/Views/{1}/{0}.cshtml",
-                                                          "~/Areas/{2}/Views/{1}/{0}.vbhtml",
-                                                          "~/Areas/{2}/Views/Shared/{0}.cshtml",
-                                                          "~/Areas/{2}/Views/Shared/{0}.vbhtml"
-                                                      };
             ViewLocationFormats = new[]
-                                           {
-                                               "~/Views/{1}/{0}.cshtml",
-                                               "~/Views/{1}/{0}.vbhtml",
-                                               "~/Views/Shared/{0}.cshtml",
-                                               "~/Views/Shared/{0}.vbhtml"
-                                           };
+                                      {
+                                          "~/Views/{1}/{0}.cshtml",
+                                          "~/Views/{1}/{0}.vbhtml",
+                                          "~/Views/Shared/{0}.cshtml",
+                                          "~/Views/Shared/{0}.vbhtml"
+                                      };
             MasterLocationFormats = new[]
+                                        {
+                                            "~/Views/{1}/{0}.cshtml",
+                                            "~/Views/{1}/{0}.vbhtml",
+                                            "~/Views/Shared/{0}.cshtml",
+                                            "~/Views/Shared/{0}.vbhtml"
+                                        };
+            PartialViewLocationFormats = new[]
                                              {
                                                  "~/Views/{1}/{0}.cshtml",
                                                  "~/Views/{1}/{0}.vbhtml",
                                                  "~/Views/Shared/{0}.cshtml",
                                                  "~/Views/Shared/{0}.vbhtml"
                                              };
-            PartialViewLocationFormats = new[]
-                                                  {
-                                                      "~/Views/{1}/{0}.cshtml",
-                                                      "~/Views/{1}/{0}.vbhtml",
-                                                      "~/Views/Shared/{0}.cshtml",
-                                                      "~/Views/Shared/{0}.vbhtml"
-                                                  };
             FileExtensions = new[]
-                                      {
-                                          "cshtml",
-                                          "vbhtml"
-                                      };
+                                 {
+                                     "cshtml",
+                                     "vbhtml"
+                                 };
 
             var dictionary = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
-            foreach (var asm in assembly)
+            foreach (var asm in assemblies)
             {
                 var name = asm.GetName().Name;
                 foreach (var type in asm.GetTypes())
@@ -88,7 +95,7 @@ namespace MultiTenantPrecompiledViewEngine
 
 
         /// <summary>
-        ///     Determines if IVirtualPathFactory lookups returns files from assembly regardless of whether physical files are available for the virtual path.
+        ///     Determines if IVirtualPathFactory lookups returns files from assemblies regardless of whether physical files are available for the virtual path.
         /// </summary>
         public bool PreemptPhysicalFiles { get; set; }
 
@@ -119,7 +126,9 @@ namespace MultiTenantPrecompiledViewEngine
         {
             Type type;
 
-            if (_mappings.TryGetValue(FormatKey(GetAssemblyName(controllerContext), partialPath), out type))
+            var tenantAssembly = _tenantFilter(controllerContext, _assemblies);
+
+            if (_mappings.TryGetValue(FormatKey(tenantAssembly.GetName().Name, partialPath), out type))
             {
                 return new PrecompiledMvcView(partialPath, type, false, FileExtensions);
             }
@@ -129,7 +138,8 @@ namespace MultiTenantPrecompiledViewEngine
         protected override IView CreateView(ControllerContext controllerContext, string viewPath, string masterPath)
         {
             Type type;
-            if (_mappings.TryGetValue(FormatKey(GetAssemblyName(controllerContext), viewPath), out type))
+            var tenantAssembly = _tenantFilter(controllerContext, _assemblies);
+            if (_mappings.TryGetValue(FormatKey(tenantAssembly.GetName().Name, viewPath), out type))
             {
                 return new PrecompiledMvcView(viewPath, type, true, FileExtensions);
             }
@@ -139,7 +149,9 @@ namespace MultiTenantPrecompiledViewEngine
 
         protected override bool FileExists(ControllerContext controllerContext, string virtualPath)
         {
-            return Exists(FormatKey(GetAssemblyName(controllerContext), virtualPath));
+            var tenantAssembly = _tenantFilter(controllerContext, _assemblies);
+
+            return Exists(FormatKey(tenantAssembly.GetName().Name, virtualPath));
         }
 
 
@@ -148,13 +160,13 @@ namespace MultiTenantPrecompiledViewEngine
             return asmName + "!" + filePath;
         }
 
-        private string GetAssemblyName(ControllerContext ctx)
-        {
-            var cache = ctx.HttpContext.Items["cview_assembly"] as string;
-            if (cache != null) return cache;
-            var asm = Assembly.GetAssembly(ctx.Controller.GetType()).GetName().Name;
-            ctx.HttpContext.Items["cview_assembly"] = asm;
-            return asm;
-        }
+        //private string GetAssemblyName(ControllerContext ctx)
+        //{
+        //    var cache = ctx.HttpContext.Items["cview_assembly"] as string;
+        //    if (cache != null) return cache;
+        //    var asm = Assembly.GetAssembly(ctx.Controller.GetType()).GetName().Name;
+        //    ctx.HttpContext.Items["cview_assembly"] = asm;
+        //    return asm;
+        //}
     }
 }
