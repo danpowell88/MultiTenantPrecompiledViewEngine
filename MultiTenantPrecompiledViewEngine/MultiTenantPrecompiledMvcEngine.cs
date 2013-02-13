@@ -24,9 +24,6 @@ namespace MultiTenantPrecompiledViewEngine
         private readonly string _baseVirtualPath;
         private readonly IDictionary<Assembly,Lazy<DateTime>> _assemblyLastWriteTimes;
 
-        private readonly Func<Assembly, DateTime> _assemblyLastWriteTimeFunc =
-            assembly => assembly.GetLastWriteTimeUtc(DateTime.MaxValue); 
-
         private readonly Func<RouteValueDictionary, IEnumerable<Assembly>, Assembly> _tenantFilter;
 
         public MultiTenantPrecompiledMvcEngine(IEnumerable<Assembly> assemblies,
